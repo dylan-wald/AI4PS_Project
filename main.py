@@ -18,10 +18,10 @@ DataObj = Data(file)
 df = DataObj.ImportData()
 
 ### define input (X) and output (y) data
-X_colnames = ["g1upper","g2upper","g3upper", "g4upper","g5lower","g6lower","g7lower","g8lower","i1","i2"]
+X_colnames = ["g1lower","g2lower","g3lower", "g4lower","g5lower","g6lower","g7lower","g8lower","i1","i2"]
 y_colnames = ["vout"]
-X = np.array(df[X_colnames])[:5000,:]
-y = np.array(df[y_colnames])[1:5001,:]
+X = np.array(df[X_colnames])[:10000,:]
+y = np.array(df[y_colnames])[1:10001,:]
 
 # ### normalize the training data
 X = DataObj.Normalize(X)
@@ -29,13 +29,17 @@ X = DataObj.Normalize(X)
 ### data DD = {(X,U,D), Y}
 frac = 0.8
 X_train, y_train, X_test, y_test = DataObj.TrainTestSplit(X, y, frac=frac)
+X_train = X_train.reshape(-1, 1, 10)
+y_train = y_train.reshape(-1, 1, 1)
+X_test = X_test.reshape(-1, 1, 10)
+y_test = y_test.reshape(-1, 1, 1)
 
 ### use the custom Pytorch Dataset generator to get train and test data
 train_data = CustomDataset(X_train, y_train)
 test_data = CustomDataset(X_test, y_test)
 
 ### use the generated train/test data and batch size to create DataLoader objects for the train and test (validataion) sets
-batch_size = 1
+batch_size = 100
 trainloader = DataLoader(train_data, batch_size=batch_size, shuffle=False)
 valloader = DataLoader(test_data, batch_size=batch_size, shuffle=False)
 
@@ -53,35 +57,28 @@ learn_rate = 0.001
 
 ### Define the loss function
 loss_func = PINNLoss()
+gamma1 = 1.0
+gamma2 = 0.0
+gamma3 = 0.0
 
 ### Define the optimizer
 optimizer = torch.optim.Adam(model.parameters())
 
 ### initialize the state
-Vc_k_est = torch.tensor([
-    [1000],
-    [1000],
-    [1000],
-    [1000],
-    [1000],
-    [1000],
-    [1000],
-    [1000],
-])
+Vc_k_est = torch.ones((batch_size, 1, 8))*1000
 
 ### Train the FNN model, monitor loss
 loss_all = []
 for i in range(num_epochs):
     l_tot = 0
-    for X_train, y_train in  trainloader:
-        
+    for X_train, y_train in trainloader:
+
         ### TRAIN THE GENERATOR
         optimizer.zero_grad()
 
         y_pred = model(X_train)
-        Vc_k_est, loss = loss_func(y_pred, y_train, X_train, Vc_k_est)
+        Vc_k_est, loss = loss_func(y_pred, y_train, X_train, Vc_k_est, gamma1, gamma2, gamma3)
         
-
         loss.backward()
 
         optimizer.step()
@@ -101,13 +98,14 @@ for X_test, y_test in  valloader:
 
     y_pred_test = model(X_test).detach().numpy()
 
-    Vc_hat.append(y_pred_test[:,:-1])
-    Vth_hat.append(y_pred_test[:,-1])
+    Vc_hat.append(y_pred_test[:,:,:-1].reshape(-1,8))
+    Vth_hat.append(y_pred_test[:,:,-1].flatten())
 
-    Vth_true.append(y_test.detach().numpy().flatten()[0])
+    Vth_true.append(y_test.detach().numpy().flatten())
 
 Vc_hat = np.array(Vc_hat).reshape(-1,8)
 Vth_hat = np.array(Vth_hat).flatten()
+Vth_true =np.array(Vth_true).flatten()
 
 fig, ax = plt.subplots(2,1)
 for i in range(8):

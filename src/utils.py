@@ -55,17 +55,17 @@ class PINNLoss(nn.Module):
     def __init__(self):
         super(PINNLoss, self).__init__()
 
-        self.V_OP = 1000 # Volts
-        self.V_ON = -1000 # Volts
+        self.V_OP = 2000 # Volts
+        self.V_ON = -2000 # Volts
 
-        self.C1 = 1e9
-        self.C2 = 1e9
-        self.C3 = 1e9
-        self.C4 = 1e9
-        self.C5 = 1e9
-        self.C6 = 1e9
-        self.C7 = 1e9
-        self.C8 = 1e9
+        self.C1 = 1e6
+        self.C2 = 1e6
+        self.C3 = 1e6
+        self.C4 = 1e6
+        self.C5 = 1e6
+        self.C6 = 1e6
+        self.C7 = 1e6
+        self.C8 = 1e6
 
         self.alpha = 1e-5
 
@@ -74,36 +74,28 @@ class PINNLoss(nn.Module):
         state transition MMC dynamics
         """        
         # currents
-        i_1 = X_true[:,-2]
-        i_2 = X_true[:,-1]
+        i_1 = X_true[:,:,-2].reshape(-1,1,1)
+        i_2 = X_true[:,:,-1].reshape(-1,1,1)
 
         # switching (upper arm)
-        S_1 = X_true[:,0]
-        S_2 = X_true[:,1]
-        S_3 = X_true[:,2]
-        S_4 = X_true[:,3]
+        S_1 = X_true[:,:,0].reshape(-1,1,1)
+        S_2 = X_true[:,:,1].reshape(-1,1,1)
+        S_3 = X_true[:,:,2].reshape(-1,1,1)
+        S_4 = X_true[:,:,3].reshape(-1,1,1)
 
         # switching (lower arm)
-        S_5 = X_true[:,4]
-        S_6 = X_true[:,5]
-        S_7 = X_true[:,6]
-        S_8 = X_true[:,7]
+        S_5 = X_true[:,:,4].reshape(-1,1,1)
+        S_6 = X_true[:,:,5].reshape(-1,1,1)
+        S_7 = X_true[:,:,6].reshape(-1,1,1)
+        S_8 = X_true[:,:,7].reshape(-1,1,1)
 
         # current capacitence voltage
-        Vc_k = X_est
+        Vc_k = torch.transpose(X_est, 1,2)
 
-        B = torch.tensor([
-            [1/self.C1],
-            [1/self.C2],
-            [1/self.C3],
-            [1/self.C4],
-            [1/self.C5],
-            [1/self.C6],
-            [1/self.C7],
-            [1/self.C8]
-        ])
-        # B = B.expand(-1,50)
-        u = torch.vstack((
+        B = torch.diag(torch.tensor([1/self.C1, 1/self.C2, 1/self.C3, 1/self.C4, 1/self.C5, 1/self.C6, 1/self.C7, 1/self.C8]))
+        B = B.expand(X_est.shape[0],X_est.shape[2],X_est.shape[2])
+
+        u = torch.stack((
             i_1*(S_1 - 1),
             i_1*(S_2 - 1),
             i_1*(S_3 - 1),
@@ -111,10 +103,10 @@ class PINNLoss(nn.Module):
             -1*i_2*S_5,
             -1*i_2*S_6,
             -1*i_2*S_7,
-            -1*i_2*S_8,
-        ))
+            -1*i_2*S_8),
+        dim=1).reshape(-1,8,1)
 
-        self.Vc_k_1 = Vc_k + self.alpha*B*u
+        self.Vc_k_1 = Vc_k + self.alpha * torch.bmm(B, u)
 
         return self.Vc_k_1
 
@@ -124,23 +116,23 @@ class PINNLoss(nn.Module):
         """
 
         # switching (upper arm)
-        S_1 = X_true[:,0]
-        S_2 = X_true[:,1]
-        S_3 = X_true[:,2]
-        S_4 = X_true[:,3]
+        S_1 = X_true[:,:,0].reshape(-1,1,1)
+        S_2 = X_true[:,:,1].reshape(-1,1,1)
+        S_3 = X_true[:,:,2].reshape(-1,1,1)
+        S_4 = X_true[:,:,3].reshape(-1,1,1)
 
         # switching (lower arm)
-        S_5 = X_true[:,4]
-        S_6 = X_true[:,5]
-        S_7 = X_true[:,6]
-        S_8 = X_true[:,7]
+        S_5 = X_true[:,:,4].reshape(-1,1,1)
+        S_6 = X_true[:,:,5].reshape(-1,1,1)
+        S_7 = X_true[:,:,6].reshape(-1,1,1)
+        S_8 = X_true[:,:,7].reshape(-1,1,1)
 
-        S_1_4 = torch.vstack((S_1, S_2, S_3, S_4))
-        S_5_8 = torch.vstack((S_5, S_6, S_7, S_8))
+        S_1_4 = torch.stack((S_1, S_2, S_3, S_4), dim=1).reshape(-1,4,1)
+        S_5_8 = torch.stack((S_5, S_6, S_7, S_8), dim=1).reshape(-1,4,1)
 
         const = (self.V_OP - self.V_ON)/2
-        upper_arm = (1/2)*torch.tensordot(torch.transpose(self.Vc_k_1[:4, :], 0,1), (1 - S_1_4))
-        lower_arm = (1/2)*torch.tensordot(torch.transpose(self.Vc_k_1[4:, :], 0,1), S_5_8)
+        upper_arm = (1/2)*torch.tensordot(torch.transpose(self.Vc_k_1[:,:4, :], 1,2), (1 - S_1_4)).reshape(-1,1,1)
+        lower_arm = (1/2)*torch.tensordot(torch.transpose(self.Vc_k_1[:,4:, :], 1,2), S_5_8).reshape(-1,1,1)
         self.V_th = const - upper_arm + lower_arm
 
         return self.V_th
@@ -148,43 +140,44 @@ class PINNLoss(nn.Module):
     def L1(self, y_pred, y_true):
 
         # estimated Vth from NN
-        Vth_k_1_NN = y_pred[:, -1]
+        Vth_k_1_NN = y_pred[:, :, -1].reshape(-1, 1, 1)
 
         # true Vth from data
         Vth_k_1_true = y_true
 
-        loss_1 = torch.mean((Vth_k_1_NN - Vth_k_1_true)**2)
+        # loss between estimated Vth from NN and true Vth from data
+        loss_1 = torch.mean((Vth_k_1_NN - Vth_k_1_true)**2, dim=1)
 
         return loss_1
 
     def L2(self, y_pred, Vc_k_est, X_true):
 
         # estimated Vc from NN
-        Vc_k_1_NN = torch.transpose(y_pred[:,:8],0,1)
-
+        Vc_k_1_NN = torch.transpose(y_pred[:,:,:8],1,2)
 
         # estimated Vc from state dynamics f
         Vc_k_1_hat = self.f(Vc_k_est, X_true)
 
         # loss between Vc from NN and Vc from dynamical equations
-        loss_2 = torch.norm(Vc_k_1_hat - Vc_k_1_NN, p=2)
+        loss_2 = torch.mean((Vc_k_1_hat - Vc_k_1_NN)**2, dim=1)
 
         return loss_2
 
     def L3(self, y_pred, X_true):
 
-        Vth_k_1_NN = y_pred[:,-1]
+        # estimated Vth from NN
+        Vth_k_1_NN = y_pred[:,:,-1].reshape(-1,1,1)
 
+        # estimated Vth from output equation
         Vth_k_1_hat = self.g(X_true)
-        loss_3 = torch.mean((Vth_k_1_NN - Vth_k_1_hat)**2)
+
+        # loss between Vth from NN and Vth from dynamics
+        loss_3 = torch.mean((Vth_k_1_NN - Vth_k_1_hat)**2, dim=1)
 
         return loss_3
 
-    def forward(self, y_pred, y_true, X_true, Vc_k_est):
+    def forward(self, y_pred, y_true, X_true, Vc_k_est, gamma1, gamma2, gamma3):
 
-        # loss = self.L1(y_pred, y_true)
-        # loss = self.L2(y_pred, Vc_k_est, X_true)
-        # loss = self.L2(y_pred, Vc_k_est, X_true) + self.L3(y_pred, X_true)
-        loss = self.L1(y_pred, y_true) + self.L2(y_pred, Vc_k_est, X_true) + self.L3(y_pred, X_true)
+        loss = gamma1*self.L1(y_pred, y_true) + gamma2*self.L2(y_pred, Vc_k_est, X_true) + gamma3*self.L3(y_pred, X_true)
 
-        return torch.transpose(y_pred[:,:8],0,1).detach(), loss
+        return y_pred[:,:,:8].detach(), torch.mean(loss)
