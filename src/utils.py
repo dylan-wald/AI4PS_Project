@@ -6,7 +6,7 @@ import torch
 import torch.nn as nn
 from torch.utils.data import Dataset, DataLoader
 
-from sklearn.preprocessing import MinMaxScaler
+from sklearn.preprocessing import MinMaxScaler, StandardScaler
 
 # torch custom dataset class
 class CustomDataset(Dataset):
@@ -37,7 +37,7 @@ class Data():
 
     def Normalize(self, X):
 
-        X = MinMaxScaler().fit_transform(X)
+        X = StandardScaler().fit_transform(X)
 
         return X
 
@@ -55,17 +55,17 @@ class PINNLoss(nn.Module):
     def __init__(self):
         super(PINNLoss, self).__init__()
 
-        self.V_OP = 2000 # Volts
-        self.V_ON = -2000 # Volts
+        self.V_OP = 1000 # Volts
+        self.V_ON = 1000 # Volts
 
-        self.C1 = 1e6
-        self.C2 = 1e6
-        self.C3 = 1e6
-        self.C4 = 1e6
-        self.C5 = 1e6
-        self.C6 = 1e6
-        self.C7 = 1e6
-        self.C8 = 1e6
+        self.C1 = 0.0014 #1e6
+        self.C2 = 0.0014 #1e6
+        self.C3 = 0.0014 #1e6
+        self.C4 = 0.0014 #1e6
+        self.C5 = 0.0014 #1e6
+        self.C6 = 0.0014 #1e6
+        self.C7 = 0.0014 #1e6
+        self.C8 = 0.0014 #1e6
 
         self.alpha = 1e-5
 
@@ -96,10 +96,10 @@ class PINNLoss(nn.Module):
         B = B.expand(X_est.shape[0],X_est.shape[2],X_est.shape[2])
 
         u = torch.stack((
-            i_1*(S_1 - 1),
-            i_1*(S_2 - 1),
-            i_1*(S_3 - 1),
-            i_1*(S_4 - 1),
+            -1*i_1*S_1,
+            -1*i_1*S_2,
+            -1*i_1*S_3,
+            -1*i_1*S_4,
             -1*i_2*S_5,
             -1*i_2*S_6,
             -1*i_2*S_7,
@@ -131,7 +131,7 @@ class PINNLoss(nn.Module):
         S_5_8 = torch.stack((S_5, S_6, S_7, S_8), dim=1).reshape(-1,4,1)
 
         const = (self.V_OP - self.V_ON)/2
-        upper_arm = (1/2)*torch.tensordot(torch.transpose(self.Vc_k_1[:,:4, :], 1,2), (1 - S_1_4)).reshape(-1,1,1)
+        upper_arm = (1/2)*torch.tensordot(torch.transpose(self.Vc_k_1[:,:4, :], 1,2), S_1_4).reshape(-1,1,1)
         lower_arm = (1/2)*torch.tensordot(torch.transpose(self.Vc_k_1[:,4:, :], 1,2), S_5_8).reshape(-1,1,1)
         self.V_th = const - upper_arm + lower_arm
 
@@ -163,10 +163,10 @@ class PINNLoss(nn.Module):
 
         return loss_2
 
-    def L3(self, y_pred, X_true):
+    def L3(self, y_true, X_true):
 
         # estimated Vth from NN
-        Vth_k_1_NN = y_pred[:,:,-1].reshape(-1,1,1)
+        Vth_k_1_NN = y_true #y_pred[:,:,-1].reshape(-1,1,1)
 
         # estimated Vth from output equation
         Vth_k_1_hat = self.g(X_true)
@@ -178,6 +178,10 @@ class PINNLoss(nn.Module):
 
     def forward(self, y_pred, y_true, X_true, Vc_k_est, gamma1, gamma2, gamma3):
 
-        loss = gamma1*self.L1(y_pred, y_true) + gamma2*self.L2(y_pred, Vc_k_est, X_true) + gamma3*self.L3(y_pred, X_true)
+        l1 = gamma1*self.L1(y_pred, y_true)
+        l2 = gamma2*self.L2(y_pred, Vc_k_est, X_true)
+        l3 = gamma3*self.L3(y_true, X_true)
 
-        return y_pred[:,:,:8].detach(), torch.mean(loss)
+        loss = l1 + l2 + l3
+
+        return y_pred[:,:,:8].detach(), torch.mean(loss), torch.mean(l1), torch.mean(l2), torch.mean(l3)
