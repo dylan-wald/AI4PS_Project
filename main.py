@@ -9,6 +9,8 @@ from src.utils import Data
 from src.utils import PINNLoss
 from src.NN import FNN, LSTM
 
+from sklearn.preprocessing import MinMaxScaler, StandardScaler
+
 torch.manual_seed(101)
 
 
@@ -27,9 +29,13 @@ y_colnames = ["vout"]
 X = np.array(df[X_colnames])[:10000,:]
 y = np.array(df[y_colnames])[1:10001,:]
 
+Vc_all = np.array(df[Vc_colnames])[:10000,:]
+
 # ### normalize the training data
-X = DataObj.Normalize(X)
-y = DataObj.Normalize(y)
+# norm = StandardScaler().fit(X)
+# X = norm.transform(X)
+# X = DataObj.Normalize(X)
+# y = DataObj.Normalize(y)
 
 ### data DD = {(X,U,D), Y}
 frac = 0.8
@@ -50,58 +56,76 @@ valloader = DataLoader(test_data, batch_size=batch_size, shuffle=False)
 
 # ### neural network parameters
 in_dim = 10
-hidden_dim = 512
+hidden_dim = 128
 out_dim = 9
 
 ### define the neural network
 model = LSTM(in_dim, out_dim, hidden_dim)
 
 ### training parameters
-num_epochs = 10
-learn_rate = 0.0001
+num_epochs = 50
+learn_rate = 0.00001
 
 ### Define the loss function
-loss_func = PINNLoss()
+physics_loss_func = PINNLoss()
+loss_func = torch.nn.MSELoss()
+
 # weight on nn output to true output loss
-gamma1 = 1e0
+gamma1 = .1 #1.0 / 47260.1495314765 #5e-6
 # weight on nn state output to dynamic state output loss
-gamma2 = 5e0
+gamma2 = 10. #1e0 / 2.899061760923799
 # weight on nn output to dynamic output loss
-gamma3 = 5e5 #1e-10
+gamma3 = .1 #/ 47260.1495314765 #5e-6
 
 ### Define the optimizer
 optimizer = torch.optim.Adam(model.parameters())
 
-### initialize the state
-Vc_k_est = torch.ones((batch_size, 1, 8))*1000
+### initialize the state 
+# Vc_k_est = torch.tensor(Vc_all[:batch_size, :], requires_grad=True, dtype=torch.float32).reshape(batch_size, 1, 8)
 
+idx = np.linspace(0,len(X_train),int(len(X_train)/batch_size)+1).astype(int)
 ### Train the FNN model, monitor loss
 loss_all = []
-for i in range(num_epochs):
+for j in range(num_epochs):
     l_tot = 0
     l1_tot = 0
     l2_tot = 0
     l3_tot = 0
-    for X_train, y_train in trainloader:
-    # for i in range(int(len(X_train)/batch_size)):
+    # for X_train, y_train in trainloader:
+    for i in range(len(idx)-1):
+
+        Vc_k_est = torch.tensor(Vc_all[idx[i]:idx[i+1], :], dtype=torch.float32).reshape(batch_size, 1, 8)
+
+        X_train_torch = torch.tensor(X_train[idx[i]:idx[i+1], :, :], dtype=torch.float32)
+        y_train_torch = torch.tensor(y_train[idx[i]:idx[i+1], :, :], dtype=torch.float32) / 1000
 
         ### TRAIN THE GENERATOR
         optimizer.zero_grad()
 
-        y_pred = model(X_train)
-        Vc_k_est, loss, l1, l2, l3 = loss_func(y_pred, y_train, X_train, Vc_k_est, gamma1, gamma2, gamma3)
+        y_pred = model(X_train_torch)
+
+        mse_loss = gamma1*loss_func(y_train_torch, y_pred[:, :, -1].reshape(-1, 1, 1))
+        Vc_k_est, physics_loss, l2, l3 = physics_loss_func(y_pred, y_train_torch, X_train_torch, Vc_k_est, gamma1, gamma2, gamma3)
+        loss = mse_loss + physics_loss
         
         loss.backward()
 
         optimizer.step()
 
         l_tot = l_tot + loss.detach()
-        l1_tot = l1_tot + l1.detach()
+        l1_tot = l1_tot + mse_loss.detach()
         l2_tot = l2_tot + l2.detach()
         l3_tot = l3_tot + l3.detach()
 
-    print(f"Epech {i} loss: {l_tot} ({l1_tot}, {l2_tot}, {l3_tot})")
+    print(f"Epoch {j} loss: {l_tot} ({l1_tot}, {l2_tot}, {l3_tot})")
     loss_all.append(l_tot)
+
+plt.figure()
+plt.plot(loss_all, label="Total loss")
+plt.ylabel("Total")
+plt.xlabel("Epochs")
+plt.legend()
+plt.show()
 
 
 
@@ -111,7 +135,7 @@ Vth_hat_train = []
 Vth_true_train = []
 for X_train, y_train in  trainloader:
 
-    y_pred_train = model(X_train).detach().numpy()
+    y_pred_train = model(X_train).detach().numpy()*1000
 
     Vc_hat_train.append(y_pred_train[:,:,:-1].reshape(-1,8))
     Vth_hat_train.append(y_pred_train[:,:,-1].flatten())
@@ -142,7 +166,7 @@ Vth_hat = []
 Vth_true = []
 for X_test, y_test in  valloader:
 
-    y_pred_test = model(X_test).detach().numpy()
+    y_pred_test = model(X_test).detach().numpy()*1000
 
     Vc_hat.append(y_pred_test[:,:,:-1].reshape(-1,8))
     Vth_hat.append(y_pred_test[:,:,-1].flatten())

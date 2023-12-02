@@ -106,11 +106,11 @@ class PINNLoss(nn.Module):
             -1*i_2*S_8),
         dim=1).reshape(-1,8,1)
 
-        self.Vc_k_1 = Vc_k + self.alpha * torch.bmm(B, u)
+        Vc_k_1 = Vc_k + self.alpha * torch.bmm(B, u)
 
-        return self.Vc_k_1
+        return Vc_k_1
 
-    def g(self, X_true):
+    def g(self, y_pred, X_true):
         """
         MMC output dynamics
         """
@@ -131,11 +131,13 @@ class PINNLoss(nn.Module):
         S_5_8 = torch.stack((S_5, S_6, S_7, S_8), dim=1).reshape(-1,4,1)
 
         const = (self.V_OP - self.V_ON)/2
-        upper_arm = (1/2)*torch.tensordot(torch.transpose(self.Vc_k_1[:,:4, :], 1,2), S_1_4).reshape(-1,1,1)
-        lower_arm = (1/2)*torch.tensordot(torch.transpose(self.Vc_k_1[:,4:, :], 1,2), S_5_8).reshape(-1,1,1)
-        self.V_th = const - upper_arm + lower_arm
+        # upper_arm = (1/2)*torch.tensordot(torch.transpose(self.Vc_k_1[:,:4, :], 1,2), S_1_4).reshape(-1,1,1)
+        # lower_arm = (1/2)*torch.tensordot(torch.transpose(self.Vc_k_1[:,4:, :], 1,2), S_5_8).reshape(-1,1,1)
+        upper_arm = (1/2)*torch.tensordot(y_pred[:,:,:4], S_1_4).reshape(-1,1,1)
+        lower_arm = (1/2)*torch.tensordot(y_pred[:,:,4:-1], S_5_8).reshape(-1,1,1)
+        V_th = const - upper_arm + lower_arm
 
-        return self.V_th
+        return V_th
 
     def L1(self, y_pred, y_true):
 
@@ -156,20 +158,21 @@ class PINNLoss(nn.Module):
         Vc_k_1_NN = torch.transpose(y_pred[:,:,:8],1,2)
 
         # estimated Vc from state dynamics f
-        Vc_k_1_hat = self.f(Vc_k_est, X_true)
+        Vc_k_1_hat = self.f(Vc_k_est, X_true) / 1000
 
         # loss between Vc from NN and Vc from dynamical equations
         loss_2 = torch.mean((Vc_k_1_hat - Vc_k_1_NN)**2, dim=1)
 
         return loss_2
 
-    def L3(self, y_true, X_true):
+    def L3(self, y_true, y_pred, X_true):
 
         # estimated Vth from NN
-        Vth_k_1_NN = y_true #y_pred[:,:,-1].reshape(-1,1,1)
+        # Vth_k_1_NN = y_true 
+        Vth_k_1_NN = y_pred[:,:,-1].reshape(-1,1,1)
 
         # estimated Vth from output equation
-        Vth_k_1_hat = self.g(X_true)
+        Vth_k_1_hat = self.g(y_pred, X_true) / 1000
 
         # loss between Vth from NN and Vth from dynamics
         loss_3 = torch.mean((Vth_k_1_NN - Vth_k_1_hat)**2, dim=1)
@@ -178,10 +181,10 @@ class PINNLoss(nn.Module):
 
     def forward(self, y_pred, y_true, X_true, Vc_k_est, gamma1, gamma2, gamma3):
 
-        l1 = gamma1*self.L1(y_pred, y_true)
+        # l1 = gamma1*self.L1(y_pred, y_true)
         l2 = gamma2*self.L2(y_pred, Vc_k_est, X_true)
-        l3 = gamma3*self.L3(y_true, X_true)
+        l3 = gamma3*self.L3(y_true, y_pred, X_true)
 
-        loss = l1 + l2 + l3
+        loss = l2 + l3
 
-        return y_pred[:,:,:8].detach(), torch.mean(loss), torch.mean(l1), torch.mean(l2), torch.mean(l3)
+        return y_pred[:,:,:8].detach(), torch.mean(loss), torch.mean(l2), torch.mean(l3)
