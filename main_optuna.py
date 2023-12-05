@@ -29,7 +29,7 @@ Vc_colnames = ["vc1","vc2","vc3","vc4","vc5","vc6","vc7","vc8"]
 X_colnames = ["g1upper","g2upper","g3upper", "g4upper","g5upper","g6upper","g7upper","g8upper","i1","i2"]
 y_colnames = ["vout"]
 X = np.array(df[X_colnames])[5000:15000,:]
-y = np.array(df[y_colnames])[5000:15000,:]
+y = np.array(df[y_colnames])[5001:15001,:]
 
 Vc_all = np.array(df[Vc_colnames])[5000:15000,:]
 
@@ -63,6 +63,7 @@ def objective(trial, X_train, y_train, X_test, y_test):
     # ### neural network parameters
     in_dim = 10
     hidden_dim = trial.suggest_int("hidden_layers", 64, 1024, log=True) #256
+    # hidden_dim = 201
     out_dim = 9
 
     ### define the neural network
@@ -71,6 +72,7 @@ def objective(trial, X_train, y_train, X_test, y_test):
     ### training parameters
     num_epochs = 100
     learn_rate = trial.suggest_float("lr", 1e-6, 0.1, log=True) #0.00001
+    # learn_rate = trial.suggest_float("lr", 0.007*0.5, 0.007*2, log=True)
 
     ### Define the loss function
     physics_loss_func = PINNLoss()
@@ -78,10 +80,15 @@ def objective(trial, X_train, y_train, X_test, y_test):
 
     # weight on nn output to true output loss
     gamma1 = trial.suggest_float("gamma1", 1e-4, 10.0, log=True) #.1 #1.0 / 47260.1495314765 #5e-6
+    # gamma1 = trial.suggest_float("gamma1", 2.26*0.5, 2.26*2, log=True)
+
     # weight on nn state output to dynamic state output loss
     gamma2 = trial.suggest_float("gamma2", 1e-4, 10.0, log=True) #10.0 #10. #1e0 / 2.899061760923799
+    # gamma2 = trial.suggest_float("gamma2", 0.815*0.5, 0.815*2, log=True) #10.0 #10. #1e0 / 2.899061760923799
+
     # weight on nn output to dynamic output loss
     gamma3 = trial.suggest_float("gamma3", 1e-4, 10.0, log=True) #.1 #/ 47260.1495314765 #5e-6
+    # gamma3 = trial.suggest_float("gamma3", 0.000608*0.5, 0.000608*2, log=True)
 
     ### Define the optimizer
     optimizer = torch.optim.Adam(model.parameters(), lr=learn_rate)
@@ -177,7 +184,7 @@ optuna.logging.set_verbosity(optuna.logging.WARN)
 study = optuna.create_study(direction="minimize")
 
 ### Run the Optuna study (only log trials that improve the objective)
-study.optimize(lambda trial: objective(trial, X_train, y_train, X_test, y_test), n_trials=100, callbacks=[logging_callback])
+study.optimize(lambda trial: objective(trial, X_train, y_train, X_test, y_test), n_trials=50, callbacks=[logging_callback])
 
 print("Best trial:")
 trial = study.best_trial

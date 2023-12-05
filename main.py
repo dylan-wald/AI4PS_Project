@@ -27,10 +27,10 @@ df = DataObj.ImportData()
 Vc_colnames = ["vc1","vc2","vc3","vc4","vc5","vc6","vc7","vc8"]
 X_colnames = ["g1upper","g2upper","g3upper", "g4upper","g5upper","g6upper","g7upper","g8upper","i1","i2"]
 y_colnames = ["vout"]
-X = np.array(df[X_colnames])[5000:15000,:]
-y = np.array(df[y_colnames])[5000:15000,:]
+X = np.array(df[X_colnames])#[5000:15000,:]
+y = np.array(df[y_colnames])#[5000:15000,:]
 
-Vc_all = np.array(df[Vc_colnames])[5000:15000,:]
+Vc_all = np.array(df[Vc_colnames])#[5000:15000,:]
 
 # ### normalize the training data
 # norm = StandardScaler().fit(X)
@@ -64,19 +64,19 @@ out_dim = 9
 model = LSTM(in_dim, out_dim, hidden_dim)
 
 ### training parameters
-num_epochs = 500
-learn_rate = 0.007026062472237584 #0.019861825111735603 #0.00001
+num_epochs = 300
+learn_rate = 0.008125855587066246 #0.019861825111735603 #0.00001
 
 ### Define the loss function
 physics_loss_func = PINNLoss()
 loss_func = torch.nn.MSELoss()
 
 # weight on nn output to true output loss
-gamma1 = 2.2642158726325947 #4.7670423013652234 #.1 
+gamma1 = 1.513575511635682 #4.7670423013652234 #.1 
 # weight on nn state output to dynamic state output loss
-gamma2 = 0.8154662499199439 #6.660878194277664 #10.0
+gamma2 = 0.8440506511631696 #6.660878194277664 #10.0
 # weight on nn output to dynamic output loss
-gamma3 = 0.0006080492581026421 #0.10271433124674645 #.1
+gamma3 = 0.0005791257706961797 #0.10271433124674645 #.1
 
 ### Define the optimizer
 optimizer = torch.optim.Adam(model.parameters())
@@ -87,6 +87,8 @@ optimizer = torch.optim.Adam(model.parameters())
 idx = np.linspace(0,len(X_train),int(len(X_train)/batch_size)+1).astype(int)
 ### Train the FNN model, monitor loss
 loss_all = []
+loss_NN = []
+loss_physics = []
 for j in range(num_epochs):
     l_tot = 0
     l1_tot = 0
@@ -120,98 +122,156 @@ for j in range(num_epochs):
 
     print(f"Epoch {j} loss: {l_tot} ({l1_tot}, {l2_tot}, {l3_tot})")
     loss_all.append(l_tot)
+    loss_NN.append(l1_tot)
+    loss_physics.append(l2_tot + l3_tot)
 
 ### Plot the loss
-plt.figure()
-plt.plot(loss_all, label="Total loss")
-plt.ylabel("Total")
-plt.xlabel("Epochs")
-plt.legend()
+fig, ax = plt.subplots(3,1)
+
+ax[0].plot(loss_all)
+ax[0].set_ylabel("Total loss")
+ax[0].set_xticklabels([])
+
+ax[1].plot(loss_NN)
+ax[1].set_ylabel("NN MSE loss")
+ax[1].set_xticklabels([])
+
+ax[2].plot(loss_physics)
+ax[2].set_ylabel("Physics loss")
+ax[2].set_xlabel("Epochs")
+
+plt.tight_layout()
 plt.show()
+
+
 
 ### Plot the train data
 Vc_hat_train = []
 Vth_hat_train = []
 Vth_true_train = []
-for X_train, y_train in  trainloader:
+# for X_train, y_train in  trainloader:
+for i in range(len(idx)-1):
 
-    y_pred_train = model(X_train/10).detach().numpy()*1000
+    X_train_torch = torch.tensor(X_train[idx[i]:idx[i+1], :, :], dtype=torch.float32) / 10
+    y_train_torch = torch.tensor(y_train[idx[i]:idx[i+1], :, :], dtype=torch.float32)
+    Vc_k_est = torch.tensor(Vc_all[idx[i]:idx[i+1], :], dtype=torch.float32).reshape(batch_size, 8)
+
+    y_pred_train = model(X_train_torch).detach().numpy()*1000
 
     Vc_hat_train.append(y_pred_train[:,:,:-1].reshape(-1,8))
     Vth_hat_train.append(y_pred_train[:,:,-1].flatten())
 
-    Vth_true_train.append(y_train.detach().numpy().flatten())
+    Vth_true_train.append(y_train_torch.detach().numpy().flatten())
 
 Vc_hat_train = np.array(Vc_hat_train).reshape(-1,8)
-Vc_true_train = np.array(df[Vc_colnames])[:8000,:]
+Vc_true_train = np.array(df[Vc_colnames])[:int(len(X)*frac),:]
 Vth_hat_train = np.array(Vth_hat_train).flatten()
 Vth_true_train =np.array(Vth_true_train).flatten()
 
 fig, ax = plt.subplots(3,1)
 for i in range(8):
+    # if i == 3 or i == 5:
+    #     ax[0].plot(Vc_hat_train[:,i], label=f"$Vc_{i}$")
+    #     ax[0].plot(Vc_true_train[:,i], 'k--')
+    # elif i == 1 or i == 7:
+    #     ax[2].plot(Vc_hat_train[:,i], label=f"$Vc_{i}$")
+    #     ax[2].plot(Vc_true_train[:,i], 'k--')
+    # else:
+    #     ax[1].plot(Vc_hat_train[:,i], label=f"$Vc_{i}$")
+    #     ax[1].plot(Vc_true_train[:,i], 'k--')
+
     if i < 4:
-        ax[0].plot(Vc_hat_train[:,i], label=f"Vc{i}")
-        ax[0].plot(Vc_true_train[:,i], 'k-')
+        ax[0].plot(Vc_hat_train[:,i], label=f"$Vc_{i}$")
+        ax[0].plot(Vc_true_train[:,i], 'k--')
     else:
-        ax[1].plot(Vc_hat_train[:,i], label=f"Vc{i}")
-        ax[1].plot(Vc_true_train[:,i], 'k-')
+        ax[1].plot(Vc_hat_train[:,i], label=f"$Vc_{i}$")
+        ax[1].plot(Vc_true_train[:,i], 'k--')
 
 ax[0].set_title("Upper Arm")
-ax[0].set_xlabel("Time")
-ax[0].set_ylabel("Cap Voltage")
+ax[0].set_ylabel("Cap Volt [V]")
+ax[0].set_xticklabels([])
 ax[0].legend()
 
 ax[1].set_title("Lower Arm")
-ax[1].set_xlabel("Time")
-ax[1].set_ylabel("Cap Voltage")
+ax[1].set_xticklabels([])
+ax[1].set_ylabel("Cap Volt [V]")
 ax[1].legend()
 
 ax[2].plot(Vth_true_train, label="True")
 ax[2].plot(Vth_hat_train, label="Est")
+ax[2].set_ylabel("Thevenin Volt [V]")
+ax[2].set_xlabel("Time [sec]")
+xticks = ax[2].get_xticks()
+ax[2].set_xticklabels(['{:.2f}'.format(val*1e-5) for val in xticks])
 ax[2].legend()
+
 plt.show()
+
+Vc_mse = np.mean(np.sum((Vc_true_train - Vc_hat_train)**2, axis=1))
+Vth_mse = np.mean((Vth_true_train - Vth_hat_train)**2)
+print("Training data error:")
+print("     Vc:", Vc_mse)
+print("     Vth:", Vth_mse)
+print("     Total:", Vc_mse+Vth_mse)
     
 
 
 
 ### Plot the test data
-Vc_hat = []
-Vth_hat = []
-Vth_true = []
-for X_test, y_test in  valloader:
+idx = np.linspace(0,len(X_test)-1,int(len(X_test)/batch_size)+1).astype(int)
+Vc_hat = np.array([[],[],[],[],[],[],[],[]]).T
+Vth_hat = np.array([])
+Vth_true = np.array([])
+# for X_test, y_test in  valloader:
+for i in range(len(idx)-1):
 
-    y_pred_test = model(X_test/10).detach().numpy()*1000
+    X_test_torch = torch.tensor(X_test[idx[i]:idx[i+1], :, :], dtype=torch.float32) / 10
+    y_test_torch = torch.tensor(y_test[idx[i]:idx[i+1], :, :], dtype=torch.float32)
+    # Vc_k_est = torch.tensor(Vc_all[idx[i]:idx[i+1], :], dtype=torch.float32).reshape(batch_size, 8)
 
-    Vc_hat.append(y_pred_test[:,:,:-1].reshape(-1,8))
-    Vth_hat.append(y_pred_test[:,:,-1].flatten())
+    y_pred_test = model(X_test_torch).detach().numpy()*1000
 
-    Vth_true.append(y_test.detach().numpy().flatten())
+    Vc_hat = np.vstack((Vc_hat, y_pred_test[:,:,:-1].reshape(-1,8)))
+    Vth_hat = np.concatenate((Vth_hat, y_pred_test[:,:,-1].flatten()))
+
+    Vth_true = np.concatenate((Vth_true, y_test_torch.detach().numpy().flatten()))
 
 Vc_hat = np.array(Vc_hat).reshape(-1,8)
-Vc_true = np.array(df[Vc_colnames])[-2000:,:]
+Vc_true = np.array(df[Vc_colnames])[-int(len(X)*(1-frac)):,:]
 Vth_hat = np.array(Vth_hat).flatten()
 Vth_true =np.array(Vth_true).flatten()
 
 fig, ax = plt.subplots(3,1)
 for i in range(8):
     if i < 4:
-        ax[0].plot(Vc_hat_train[:,i], label=f"Vc{i}")
-        ax[0].plot(Vc_true_train[:,i], 'k-')
+        ax[0].plot(Vc_hat[:,i], label=f"$Vc_{i}$")
+        ax[0].plot(Vc_true[:,i], 'k--')
     else:
-        ax[1].plot(Vc_hat_train[:,i], label=f"Vc{i}")
-        ax[1].plot(Vc_true_train[:,i], 'k-')
+        ax[1].plot(Vc_hat[:,i], label=f"$Vc_{i}$")
+        ax[1].plot(Vc_true[:,i], 'k--')
 
 ax[0].set_title("Upper Arm")
-ax[0].set_xlabel("Time")
-ax[0].set_ylabel("Cap Voltage")
+ax[0].set_xticklabels([])
+ax[0].set_ylabel("Cap Volt [V]")
 ax[0].legend()
 
 ax[1].set_title("Lower Arm")
-ax[1].set_xlabel("Time")
-ax[1].set_ylabel("Cap Voltage")
+ax[1].set_xticklabels([])
+ax[1].set_ylabel("Cap Volt [V]")
 ax[1].legend()
 
 ax[2].plot(Vth_true, label="True")
 ax[2].plot(Vth_hat, label="Est")
+ax[2].set_ylabel("Thevenin Volt [V]")
+ax[2].set_xlabel("Time [sec]")
+xticks = ax[2].get_xticks()
+ax[2].set_xticklabels(['{:.2f}'.format(val*1e-5) for val in xticks])
 ax[2].legend()
 plt.show()
+
+Vc_mse = np.mean(np.sum((Vc_true - Vc_hat)**2, axis=1))
+Vth_mse = np.mean((Vth_true - Vth_hat)**2)
+print("Training data error:")
+print("     Vc:", Vc_mse)
+print("     Vth:", Vth_mse)
+print("     Total:", Vc_mse+Vth_mse)
