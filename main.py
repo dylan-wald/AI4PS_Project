@@ -18,6 +18,7 @@ torch.manual_seed(101)
 # file = "data/combinedDataRev3Labeled.csv"
 # file = "data/combinedDataRev4SlimLabeled.csv"
 file = "data/combinedDataRev4LabeledSynthetic.csv"
+# file = "data/combinedDataFirstLabeled.csv"
 
 ### create dataframe
 DataObj = Data(file)

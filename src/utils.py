@@ -107,6 +107,7 @@ class PINNLoss(nn.Module):
         dim=1).reshape(-1,8,1)
 
         Vc_k_1 = Vc_k + self.alpha * torch.bmm(B, u)
+        # Vc_k_1 = torch.bmm(B, u)
 
         return Vc_k_1
 
@@ -161,7 +162,7 @@ class PINNLoss(nn.Module):
         Vc_k_1_hat = self.f(Vc_k_est, X_true) / 1000
 
         # loss between Vc from NN and Vc from dynamical equations
-        loss_2 = torch.mean((Vc_k_1_hat - Vc_k_1_NN)**2, dim=1)
+        loss_2 = torch.mean((Vc_k_1_hat - Vc_k_1_NN)**2, dim=1) #+ 1e-8*torch.mean((Vc_k_1_NN - Vc_k_est)**2, dim=1)
 
         return loss_2
 
