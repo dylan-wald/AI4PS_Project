@@ -18,7 +18,14 @@ torch.manual_seed(101)
 ### data file
 # file = "data/combinedDataRev3Labeled.csv"
 # file = "data/combinedDataRev4SlimLabeled.csv"
-file = "data/combinedDataRev4LabeledSynthetic.csv"
+# file = "data/combinedDataRev4LabeledSynthetic.csv"
+
+# fault conditions
+# file = "data/combinedSimpleFaultLabeled.csv" # all fault data
+# file = "data/combinedSimpleNormalLabeled.csv" # no fault data
+# file = "data/combinedSimpleFaultComboLabeled.csv" # combined fault and no fault data (fake)
+# file = "data/completeDatasetLabeled.csv" # combined fault and no fault data (real)
+file = "data/completeDataFaultSimpleV3Labeled.csv" # combined fault and no fault data (real - short fault)
 
 ### create dataframe
 DataObj = Data(file)
@@ -28,16 +35,10 @@ df = DataObj.ImportData()
 Vc_colnames = ["vc1","vc2","vc3","vc4","vc5","vc6","vc7","vc8"]
 X_colnames = ["g1upper","g2upper","g3upper", "g4upper","g5upper","g6upper","g7upper","g8upper","i1","i2"]
 y_colnames = ["vout"]
-X = np.array(df[X_colnames])[5000:15000,:]
-y = np.array(df[y_colnames])[5001:15001,:]
+X = np.array(df[X_colnames])#[5000:15000,:]
+y = np.array(df[y_colnames])#[5001:15001,:]
 
-Vc_all = np.array(df[Vc_colnames])[5000:15000,:]
-
-# ### normalize the training data
-# norm = StandardScaler().fit(X)
-# X = norm.transform(X)
-# X = DataObj.Normalize(X)
-# y = DataObj.Normalize(y)
+Vc_all = np.array(df[Vc_colnames])#[5000:15000,:]
 
 ### data DD = {(X,U,D), Y}
 frac = 0.8
@@ -47,23 +48,14 @@ y_train = y_train.reshape(-1, 1, 1)
 X_test = X_test.reshape(-1, 1, 10)
 y_test = y_test.reshape(-1, 1, 1)
 
-### use the custom Pytorch Dataset generator to get train and test data
-train_data = CustomDataset(X_train, y_train)
-test_data = CustomDataset(X_test, y_test)
-
-### use the generated train/test data and batch size to create DataLoader objects for the train and test (validataion) sets
-batch_size = 50
-trainloader = DataLoader(train_data, batch_size=batch_size, shuffle=False)
-valloader = DataLoader(test_data, batch_size=batch_size, shuffle=False)
-
 def objective(trial, X_train, y_train, X_test, y_test):
 
     batch_size = 200
 
     # ### neural network parameters
     in_dim = 10
-    hidden_dim = trial.suggest_int("hidden_layers", 64, 1024, log=True) #256
-    # hidden_dim = 201
+    # hidden_dim = trial.suggest_int("hidden_layers", 64, 1024, log=True) #256
+    hidden_dim = trial.suggest_int("hidden_layers", 100, 300, log=True)
     out_dim = 9
 
     ### define the neural network
@@ -71,24 +63,24 @@ def objective(trial, X_train, y_train, X_test, y_test):
 
     ### training parameters
     num_epochs = 100
-    learn_rate = trial.suggest_float("lr", 1e-6, 0.1, log=True) #0.00001
-    # learn_rate = trial.suggest_float("lr", 0.007*0.5, 0.007*2, log=True)
+    # learn_rate = trial.suggest_float("lr", 1e-6, 0.1, log=True) #0.00001
+    learn_rate = trial.suggest_float("lr", 0.00813*0.1, 0.00813*10, log=True)
 
     ### Define the loss function
-    physics_loss_func = PINNLoss()
-    loss_func = torch.nn.MSELoss()
-
     # weight on nn output to true output loss
-    gamma1 = trial.suggest_float("gamma1", 1e-4, 10.0, log=True) #.1 #1.0 / 47260.1495314765 #5e-6
-    # gamma1 = trial.suggest_float("gamma1", 2.26*0.5, 2.26*2, log=True)
+    # gamma1 = trial.suggest_float("gamma1", 1e-4, 10.0, log=True) #.1 #1.0 / 47260.1495314765 #5e-6
+    gamma1 = trial.suggest_float("gamma1", 1.54*0.1, 1.54*10, log=True)
 
     # weight on nn state output to dynamic state output loss
-    gamma2 = trial.suggest_float("gamma2", 1e-4, 10.0, log=True) #10.0 #10. #1e0 / 2.899061760923799
-    # gamma2 = trial.suggest_float("gamma2", 0.815*0.5, 0.815*2, log=True) #10.0 #10. #1e0 / 2.899061760923799
+    # gamma2 = trial.suggest_float("gamma2", 1e-4, 10.0, log=True) #10.0 #10. #1e0 / 2.899061760923799
+    gamma2 = trial.suggest_float("gamma2", 0.844*0.1, 0.844*10, log=True)
 
     # weight on nn output to dynamic output loss
-    gamma3 = trial.suggest_float("gamma3", 1e-4, 10.0, log=True) #.1 #/ 47260.1495314765 #5e-6
-    # gamma3 = trial.suggest_float("gamma3", 0.000608*0.5, 0.000608*2, log=True)
+    # gamma3 = trial.suggest_float("gamma3", 1e-4, 10.0, log=True) #.1 #/ 47260.1495314765 #5e-6
+    gamma3 = trial.suggest_float("gamma3", 0.00058*0.1, 0.00058*10, log=True)
+
+    physics_loss_func = PINNLoss(gamma2, gamma3)
+    loss_func = torch.nn.MSELoss()
 
     ### Define the optimizer
     optimizer = torch.optim.Adam(model.parameters(), lr=learn_rate)
@@ -96,7 +88,8 @@ def objective(trial, X_train, y_train, X_test, y_test):
     ### initialize the state 
     # Vc_k_est = torch.tensor(Vc_all[:batch_size, :], requires_grad=True, dtype=torch.float32).reshape(batch_size, 1, 8)
 
-    idx = np.linspace(0,len(X_train),int(len(X_train)/batch_size)+1).astype(int)
+    idx = np.arange(0,len(X_train),batch_size)
+    # idx = np.linspace(0,len(X_train),int(len(X_train)/batch_size)+1).astype(int)
     ### Train the FNN model, monitor loss
     loss_all = []
     for j in range(num_epochs):
@@ -117,7 +110,7 @@ def objective(trial, X_train, y_train, X_test, y_test):
             y_pred = model(X_train_torch)
 
             mse_loss = gamma1*loss_func(y_train_torch, y_pred[:, :, -1].reshape(-1, 1, 1))
-            Vc_k_est, physics_loss, l2, l3 = physics_loss_func(y_pred, y_train_torch, X_train_torch*10, Vc_k_est, gamma1, gamma2, gamma3)
+            Vc_k_est, physics_loss, l2, l3 = physics_loss_func(y_pred, y_train_torch, X_train_torch*10, Vc_k_est)
             loss = mse_loss + physics_loss
             
             loss.backward()

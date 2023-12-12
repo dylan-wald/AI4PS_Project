@@ -1,8 +1,6 @@
-import numpy as np
-
-import torch
 import torch.nn as nn
 
+### FULLY CONNECTED NEURAL NETWORK CLASS
 class FNN(nn.Module):
 
     def __init__(self, in_dim, out_dim, hidden_dim):
@@ -27,7 +25,7 @@ class FNN(nn.Module):
 
         return x
 
-
+### LONG SHORT-TERM MEMORY NETWORK CLASS
 class LSTM(nn.Module):
 
     def __init__(self, in_dim, out_dim, hidden_dim):
