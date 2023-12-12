@@ -1,6 +1,7 @@
 # AI4PS_Project
 
 This is the repository for the AI4PS group project
+
 Authors: Dylan Wald, Andrew Rouze, Ghazaleh Sarfi
 
 ## Code structure for training and testing the PINN:
