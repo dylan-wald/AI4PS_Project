@@ -1,11 +1,14 @@
 # AI4PS_Project
 
 This is the repository for the AI4PS group project
+Authors: Dylan Wald, Andrew Rouze, Ghazaleh Sarfi
 
 To run the problem: python main.py
 
-PINN objective function is in src/utils.py
+To run the Optuna problem: python main_optuna.py
 
-The NN is in NN.py
+PINN objective function is in src/utils.py --> PINNobj() class
 
-The data used to train the NN is in data/
+The LSTM is in NN.py --> LSTM() class
+
+The data used to train the NN is in the "data/" folder
