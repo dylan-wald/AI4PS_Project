@@ -22,10 +22,10 @@ Authors: Dylan Wald, Andrew Rouze, Ghazaleh Sarfi
 
 
 ## To run the code: 
-python main.py
+$ python main.py
 
 ## To run the Optuna problem: 
-python main_optuna.py
+$ python main_optuna.py
 
 ## Dependencies
 - python==3.11.0
