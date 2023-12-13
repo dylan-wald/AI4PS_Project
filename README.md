@@ -20,6 +20,12 @@ Authors: Dylan Wald, Andrew Rouze, Ghazaleh Sarfi
     - PAPER_bypass.csv -> the data used to trian the PINN under bypass conditons
     - there are many other .csv files in here that were used in various iterations of this project (dont need to worry about them)
 
+## Synthetic data generation
+- matlab/
+    - singlePhaseMMC.slx -> simulink model, generates data for normal conditions case
+    - singlePhaseMMCbypassCapSwitch.slx -> simulink model, generates data for bypass condition case
+    - singlePhaseMMCfaultSimpleV4.slx -> simulink model, generates data for fault condition case
+
 
 ## To run the code: 
 $ python main.py
